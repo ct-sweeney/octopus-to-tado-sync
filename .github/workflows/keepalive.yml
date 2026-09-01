@@ -1,24 +1,26 @@
-name: Keepalive Workflow
+name: Keepalive
 
 on:
   schedule:
-    # Runs every Tuesday at 00:00 UTC
-    - cron: '0 0 * * 2'
+    # Runs at 00:00 on the 1st of every month
+    - cron: '0 0 1 * *'
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: write
 
 jobs:
   keepalive:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Keepalive Workflow
-        uses: gautamkrishnar/keepalive-workflow@v2
-        with:
-          use_api: true
-          time_elapsed: 30
+      - name: Clone Repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" .
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          date -u > .github/keepalive.txt
+          git add .github/keepalive.txt
+          git commit -m "chore: keepalive [skip ci]" || exit 0
+          git push
