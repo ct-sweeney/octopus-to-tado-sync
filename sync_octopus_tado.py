@@ -329,46 +329,59 @@ def get_tado_last_meter_reading(tado):
 
 def get_consumption_since_date(api_key, mprn, gas_serial_number, since_datetime):
     """
-    Retrieves gas consumption from Octopus Energy API since a specific date.
-
-    Args:
-        api_key: Octopus API key
-        mprn: Meter Point Reference Number
-        gas_serial_number: Gas meter serial number
-        since_datetime: datetime object or ISO string - only get consumption after this date
-
-    Returns:
-        Total consumption since the given date
+    Retrieves gas consumption from Octopus Energy API strictly after since_datetime.
     """
     if isinstance(since_datetime, str):
-        # Parse ISO format datetime string
-        since_datetime = datetime.fromisoformat(since_datetime.replace("Z", "+00:00"))
+        clean_str = since_datetime.replace("Z", "+00:00")
+        if "T" not in clean_str:
+            # Tado returned 'YYYY-MM-DD'
+            since_datetime = datetime.fromisoformat(f"{clean_str}T00:00:00+00:00")
+        else:
+            since_datetime = datetime.fromisoformat(clean_str)
 
-    url = (
+    # Format cleanly as UTC with trailing 'Z' (e.g. 2026-09-15T00:00:00Z)
+    utc_iso = since_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    base_url = (
         f"https://api.octopus.energy/v1/gas-meter-points/{mprn}/meters/"
-        f"{gas_serial_number}/consumption/?group_by=quarter&period_from="
-        f"{since_datetime.isoformat()}Z"
+        f"{gas_serial_number}/consumption/"
     )
+    
+    params = {
+        "period_from": utc_iso,
+        "group_by": "day",      # Gas meters do not support 'quarter'
+        "order_by": "period",
+    }
+    
     consumption_delta = 0.0
+    url = base_url
 
     while url:
-        response = requests.get(url, auth=HTTPBasicAuth(api_key, ""))
+        # Pass params only on the initial call; subsequent paginated URLs already embed them
+        response = requests.get(
+            url,
+            auth=HTTPBasicAuth(api_key, ""),
+            params=params if url == base_url else None,
+            timeout=30,
+        )
 
         if response.status_code == 200:
             meter_readings = response.json()
+            results = meter_readings.get("results", [])
+            print(f"Octopus returned {len(results)} records since {utc_iso}")
+            
             consumption_delta += sum(
-                interval["consumption"] for interval in meter_readings["results"]
+                interval.get("consumption", 0.0) for interval in results
             )
-            url = meter_readings.get("next", "")
+            url = meter_readings.get("next")
         else:
             raise RuntimeError(
-                "Failed to retrieve Octopus consumption delta. "
+                f"Failed to retrieve Octopus consumption delta. "
                 f"MPRN: {mprn}, Gas serial number: {gas_serial_number}, "
                 f"Status code: {response.status_code}, Message: {response.text}"
             )
 
     return consumption_delta
-
 
 def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number, tado=None):
     """
@@ -496,31 +509,30 @@ def tado_login(username, password):
 
 
 def send_reading_to_tado(username, password, reading):
-    """
-    Sends the total consumption reading to Tado using its Energy IQ feature.
-    """
-
+    """Sends the total consumption reading to Tado using its Energy IQ feature."""
     tado = tado_login(username=username, password=password)
-
+    formatted_reading = round(float(reading), 2)
+    
     result = call_tado_method(
         tado,
         "set_eiq_meter_readings",
         "setEIQMeterReadings",
-        reading=int(reading),
+        reading=formatted_reading,
     )
-    print(result)
+    print(f"Tado reading submission response: {result}")
 
 
 def send_reading_to_tado_client(tado, reading):
     """Send the total consumption reading to an authenticated Tado client."""
+    formatted_reading = round(float(reading), 2)
+    
     result = call_tado_method(
         tado,
         "set_eiq_meter_readings",
         "setEIQMeterReadings",
-        reading=int(reading),
+        reading=formatted_reading,
     )
-    print(result)
-
+    print(f"Tado reading submission response: {result}")
 
 def parse_args():
     """
