@@ -334,12 +334,12 @@ def get_consumption_since_date(api_key, mprn, gas_serial_number, since_datetime)
     if isinstance(since_datetime, str):
         clean_str = since_datetime.replace("Z", "+00:00")
         if "T" not in clean_str:
-            # Tado returned 'YYYY-MM-DD'
-            since_datetime = datetime.fromisoformat(f"{clean_str}T00:00:00+00:00")
+            # Date-only from Tado: start querying from the NEXT day
+            parsed_date = date.fromisoformat(clean_str) + timedelta(days=1)
+            since_datetime = datetime.combine(parsed_date, datetime.min.time())
         else:
             since_datetime = datetime.fromisoformat(clean_str)
 
-    # Format cleanly as UTC with trailing 'Z' (e.g. 2026-09-15T00:00:00Z)
     utc_iso = since_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     base_url = (
@@ -418,11 +418,10 @@ def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number, tado=N
     print(
         "No previous Tado reading found, falling back to last 2 years of Octopus data"
     )
-    period_from = datetime.now() - timedelta(days=1095)  # 3 years back
+    period_from = (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%dT00:00:00Z")
     url = (
         f"https://api.octopus.energy/v1/gas-meter-points/{mprn}/meters/"
-        f"{gas_serial_number}/consumption/?group_by=quarter&period_from="
-        f"{period_from.isoformat()}Z"
+        f"{gas_serial_number}/consumption/?group_by=day&period_from={period_from}"
     )
 
     total_consumption = 0.0
