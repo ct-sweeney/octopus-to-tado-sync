@@ -521,15 +521,20 @@ def send_reading_to_tado(username, password, reading):
     print(f"Tado reading submission response: {result}")
 
 
-def send_reading_to_tado_client(tado, reading):
+def send_reading_to_tado_client(tado, reading, reading_date=None):
     """Send the total consumption reading to an authenticated Tado client."""
+    if reading_date is None:
+        # Default to yesterday's date since that is the last finalized Octopus day
+        reading_date = (date.today() - timedelta(days=1)).isoformat()
+
     formatted_reading = round(float(reading), 2)
-    
+
     result = call_tado_method(
         tado,
         "set_eiq_meter_readings",
         "setEIQMeterReadings",
         reading=formatted_reading,
+        date=reading_date,
     )
     print(f"Tado reading submission response: {result}")
 
@@ -575,17 +580,23 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # First, authenticate with Tado to retrieve the last reading
     tado = tado_login(args.tado_email, args.tado_password)
 
-    # Get total consumption from Octopus Energy API
-    # This will use delta sync if possible, falling back to 2-year window
+    # 1. Fetch last Tado reading first to check the delta
+    last_tado_reading, last_tado_date = get_tado_last_meter_reading(tado)
+
+    # 2. Get consumption
     consumption = get_meter_reading_total_consumption(
         args.octopus_api_key, args.mprn, args.gas_serial_number, tado=tado
     )
 
-    # Send the total consumption to Tado
-    send_reading_to_tado_client(tado, consumption)
+    # 3. Only send if consumption has actually advanced beyond the last Tado reading
+    if last_tado_reading is not None and consumption <= last_tado_reading:
+        print(f"No new gas consumption recorded by Octopus beyond {last_tado_reading}. Skipping Tado update.")
+    else:
+        # Send updated reading with yesterday's date (the date of the finalized consumption)
+        reading_date = (date.today() - timedelta(days=1)).isoformat()
+        send_reading_to_tado_client(tado, consumption, reading_date=reading_date)
 
     if args.update_tariff:
         if not args.octopus_account_number:
