@@ -320,7 +320,7 @@ def get_tado_last_meter_reading(tado):
                     print(
                         f"Last Tado meter reading: {reading_value} (date: {reading_date})"
                     )
-                    return reading_value, reading_date
+                    return float(reading_value), reading_date
     except Exception as e:
         print(f"Could not retrieve last Tado meter reading: {e}")
 
