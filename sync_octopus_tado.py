@@ -510,7 +510,7 @@ def tado_login(username, password):
 def send_reading_to_tado(username, password, reading):
     """Sends the total consumption reading to Tado using its Energy IQ feature."""
     tado = tado_login(username=username, password=password)
-    formatted_reading = round(float(reading), 2)
+    formatted_reading = int(round(float(reading), 2))
     
     result = call_tado_method(
         tado,
@@ -527,7 +527,7 @@ def send_reading_to_tado_client(tado, reading, reading_date=None):
         # Default to yesterday's date since that is the last finalized Octopus day
         reading_date = (date.today() - timedelta(days=1)).isoformat()
 
-    formatted_reading = round(float(reading), 2)
+    formatted_reading = int(round(float(reading), 2))
 
     result = call_tado_method(
         tado,
